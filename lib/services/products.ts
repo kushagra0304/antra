@@ -37,32 +37,35 @@ export async function updateProduct(id: number, data: ProductUpdate): Promise<Pr
     return getProductById(id);
   }
 
-  const updates: any[] = [];
-  
-  if (data.photo_url !== undefined) {
-    updates.push(sql`photo_url = ${data.photo_url}`);
-  }
-  if (data.link !== undefined) {
-    updates.push(sql`link = ${data.link}`);
-  }
-  if (data.title !== undefined) {
-    updates.push(sql`title = ${data.title}`);
-  }
-  if (data.description !== undefined) {
-    updates.push(sql`description = ${data.description}`);
-  }
-  if (data.display_order !== undefined) {
-    updates.push(sql`display_order = ${data.display_order}`);
+  // Get current product to merge with updates
+  const current = await getProductById(id);
+  if (!current) {
+    return null;
   }
 
-  updates.push(sql`updated_at = NOW()`);
+  // Merge current values with updates
+  const updatedData = {
+    photo_url: data.photo_url ?? current.photo_url,
+    link: data.link ?? current.link,
+    title: data.title ?? current.title,
+    description: data.description !== undefined ? data.description : current.description,
+    display_order: data.display_order ?? current.display_order,
+  };
 
+  // Single UPDATE query with all fields
   const products = (await sql`
     UPDATE products
-    SET ${sql.join(updates, sql`, `)}
+    SET 
+      photo_url = ${updatedData.photo_url},
+      link = ${updatedData.link},
+      title = ${updatedData.title},
+      description = ${updatedData.description},
+      display_order = ${updatedData.display_order},
+      updated_at = NOW()
     WHERE id = ${id}
     RETURNING *
   `) as Product[];
+  
   return products[0] || null;
 }
 
