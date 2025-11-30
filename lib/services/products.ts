@@ -60,11 +60,21 @@ export async function createProduct(data: ProductCreate & { photo_data?: Buffer 
   const photoUrl = data.photo_url.startsWith('db:') ? `db:${Date.now()}` : data.photo_url;
   const photoData = data.photo_data || null;
 
-  const products = await sql`
-    INSERT INTO products (photo_url, photo_data, link, title, description, display_order)
-    VALUES (${photoUrl}, ${photoData}, ${data.link}, ${data.title}, ${data.description || null}, ${displayOrder})
-    RETURNING id, photo_url, link, title, description, display_order, created_at, updated_at
-  ` as Product[];
+  // Only include photo_data in INSERT if it's provided
+  let products: Product[];
+  if (photoData) {
+    products = await sql`
+      INSERT INTO products (photo_url, photo_data, link, title, description, display_order)
+      VALUES (${photoUrl}, ${photoData}, ${data.link}, ${data.title}, ${data.description || null}, ${displayOrder})
+      RETURNING id, photo_url, link, title, description, display_order, created_at, updated_at
+    ` as Product[];
+  } else {
+    products = await sql`
+      INSERT INTO products (photo_url, link, title, description, display_order)
+      VALUES (${photoUrl}, ${data.link}, ${data.title}, ${data.description || null}, ${displayOrder})
+      RETURNING id, photo_url, link, title, description, display_order, created_at, updated_at
+    ` as Product[];
+  }
   return products[0];
 }
 
@@ -83,11 +93,14 @@ export async function updateProduct(id: number, data: ProductUpdate & { photo_da
     setClauses.push(`photo_url = $${idx++}`);
     queryValues.push(photoUrl);
     
+    // Only update photo_data if we have it or need to clear it
     if (data.photo_data) {
       setClauses.push(`photo_data = $${idx++}`);
       queryValues.push(data.photo_data);
     } else if (data.photo_url && !data.photo_url.startsWith('db:')) {
-      setClauses.push(`photo_data = NULL`);
+      // If it's an external URL, try to clear photo_data (only if column exists)
+      // We'll skip this to avoid errors if column doesn't exist yet
+      // setClauses.push(`photo_data = NULL`);
     }
   }
   if (data.link !== undefined) {

@@ -18,17 +18,17 @@ export async function runMigrations() {
     `;
 
     // Add photo_data column if it doesn't exist (for existing databases)
-    await sql`
-      DO $$ 
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name = 'products' AND column_name = 'photo_data'
-        ) THEN
-          ALTER TABLE products ADD COLUMN photo_data BYTEA;
-        END IF;
-      END $$;
-    `;
+    // Use a simpler approach that works better with Neon
+    try {
+      await sql`
+        ALTER TABLE products ADD COLUMN photo_data BYTEA;
+      `;
+    } catch (error: any) {
+      // Column already exists, which is fine
+      if (!error?.message?.includes('already exists') && !error?.message?.includes('duplicate')) {
+        throw error;
+      }
+    }
 
     // Create analytics table
     await sql`
