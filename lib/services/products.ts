@@ -2,26 +2,26 @@ import { sql } from '../db';
 import type { Product, ProductCreate, ProductUpdate } from '../types';
 
 export async function getAllProducts(): Promise<Product[]> {
-  const products = await sql<Product[]>`
+  const products = await sql`
     SELECT id, photo_url, link, title, description, display_order, created_at, updated_at
     FROM products
     ORDER BY display_order ASC, created_at DESC
-  `;
+  ` as Product[];
   return products;
 }
 
 export async function getProductById(id: number): Promise<Product | null> {
-  const products = await sql<Product[]>`
+  const products = await sql`
     SELECT id, photo_url, link, title, description, display_order, created_at, updated_at
     FROM products WHERE id = ${id}
-  `;
+  ` as Product[];
   return products[0] || null;
 }
 
 export async function getProductImage(id: number): Promise<{ data: Buffer; mimeType: string } | null> {
-  const result = await sql<{ photo_data: Buffer; photo_url: string }[]>`
+  const result = await sql`
     SELECT photo_data, photo_url FROM products WHERE id = ${id}
-  `;
+  ` as { photo_data: Buffer; photo_url: string }[];
   
   if (!result[0] || !result[0].photo_data) {
     return null;
@@ -50,9 +50,9 @@ export async function getProductImage(id: number): Promise<{ data: Buffer; mimeT
 
 export async function createProduct(data: ProductCreate & { photo_data?: Buffer }): Promise<Product> {
   // Get the max display_order to place new product at the end
-  const maxOrderResult = await sql<{ max: number | null }[]>`
+  const maxOrderResult = await sql`
     SELECT MAX(display_order) as max FROM products
-  `;
+  ` as { max: number | null }[];
   const maxOrder = maxOrderResult[0]?.max ?? -1;
   const displayOrder = data.display_order ?? maxOrder + 1;
 
@@ -60,11 +60,11 @@ export async function createProduct(data: ProductCreate & { photo_data?: Buffer 
   const photoUrl = data.photo_url.startsWith('db:') ? `db:${Date.now()}` : data.photo_url;
   const photoData = data.photo_data || null;
 
-  const products = await sql<Product[]>`
+  const products = await sql`
     INSERT INTO products (photo_url, photo_data, link, title, description, display_order)
     VALUES (${photoUrl}, ${photoData}, ${data.link}, ${data.title}, ${data.description || null}, ${displayOrder})
     RETURNING id, photo_url, link, title, description, display_order, created_at, updated_at
-  `;
+  ` as Product[];
   return products[0];
 }
 
@@ -73,41 +73,52 @@ export async function updateProduct(id: number, data: ProductUpdate & { photo_da
     return getProductById(id);
   }
 
-  const updates: any[] = [];
-  
+  // Build SET clause dynamically
+  const setClauses: string[] = [];
+  const queryValues: any[] = [];
+  let idx = 1;
+
   if (data.photo_url !== undefined) {
     const photoUrl = data.photo_url.startsWith('db:') ? `db:${Date.now()}` : data.photo_url;
-    updates.push(sql`photo_url = ${photoUrl}`);
+    setClauses.push(`photo_url = $${idx++}`);
+    queryValues.push(photoUrl);
     
-    // If we have photo_data, update it too
     if (data.photo_data) {
-      updates.push(sql`photo_data = ${data.photo_data}`);
+      setClauses.push(`photo_data = $${idx++}`);
+      queryValues.push(data.photo_data);
     } else if (data.photo_url && !data.photo_url.startsWith('db:')) {
-      // If it's an external URL, clear photo_data
-      updates.push(sql`photo_data = NULL`);
+      setClauses.push(`photo_data = NULL`);
     }
   }
   if (data.link !== undefined) {
-    updates.push(sql`link = ${data.link}`);
+    setClauses.push(`link = $${idx++}`);
+    queryValues.push(data.link);
   }
   if (data.title !== undefined) {
-    updates.push(sql`title = ${data.title}`);
+    setClauses.push(`title = $${idx++}`);
+    queryValues.push(data.title);
   }
   if (data.description !== undefined) {
-    updates.push(sql`description = ${data.description}`);
+    setClauses.push(`description = $${idx++}`);
+    queryValues.push(data.description);
   }
   if (data.display_order !== undefined) {
-    updates.push(sql`display_order = ${data.display_order}`);
+    setClauses.push(`display_order = $${idx++}`);
+    queryValues.push(data.display_order);
   }
 
-  updates.push(sql`updated_at = NOW()`);
+  setClauses.push(`updated_at = NOW()`);
+  queryValues.push(id);
 
-  const products = await sql<Product[]>`
+  const queryString = `
     UPDATE products
-    SET ${sql.join(updates, sql`, `)}
-    WHERE id = ${id}
+    SET ${setClauses.join(', ')}
+    WHERE id = $${idx}
     RETURNING id, photo_url, link, title, description, display_order, created_at, updated_at
   `;
+
+  // Use sql.unsafe for dynamic queries with parameters
+  const products = await (sql as any).unsafe(queryString, queryValues) as Product[];
   return products[0] || null;
 }
 
