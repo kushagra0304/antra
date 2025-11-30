@@ -2,9 +2,6 @@ import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { getProductById, updateProduct, deleteProduct } from '@/lib/services/products';
 import type { ProductUpdate } from '@/lib/types';
-import { unlink } from 'fs/promises';
-import path from 'path';
-import { existsSync } from 'fs';
 
 export async function GET(
   request: Request,
@@ -51,8 +48,24 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Invalid product ID' }, { status: 400 });
     }
 
-    const body: ProductUpdate = await request.json();
-    const product = await updateProduct(productId, body);
+    const body: ProductUpdate & { photo_data?: string } = await request.json();
+    
+    // Convert base64 photo_data to Buffer if provided
+    let photoData: Buffer | undefined;
+    let photoUrl = body.photo_url;
+    
+    if (body.photo_data) {
+      // Remove data URL prefix if present
+      const base64Data = body.photo_data.replace(/^data:image\/\w+;base64,/, '');
+      photoData = Buffer.from(base64Data, 'base64');
+      photoUrl = photoUrl || `db:${Date.now()}`;
+    }
+
+    const product = await updateProduct(productId, {
+      ...body,
+      photo_url: photoUrl,
+      photo_data: photoData,
+    });
     
     if (!product) {
       return NextResponse.json({ success: false, error: 'Product not found' }, { status: 404 });
@@ -85,24 +98,8 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Invalid product ID' }, { status: 400 });
     }
 
-    // Get product to find image path before deleting
-    const product = await getProductById(productId);
-    
-    // Delete the product from database
+    // Delete the product from database (image data will be automatically deleted via CASCADE)
     await deleteProduct(productId);
-
-    // Delete the image file if it's a local upload
-    if (product?.photo_url && product.photo_url.startsWith('/uploads/')) {
-      const imagePath = path.join(process.cwd(), 'public', product.photo_url);
-      if (existsSync(imagePath)) {
-        try {
-          await unlink(imagePath);
-        } catch (error) {
-          console.error('Error deleting image file:', error);
-          // Don't fail the request if image deletion fails
-        }
-      }
-    }
 
     return NextResponse.json({ success: true, message: 'Product deleted' });
   } catch (error) {

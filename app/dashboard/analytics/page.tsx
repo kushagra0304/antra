@@ -49,7 +49,7 @@ export default async function AnalyticsPage() {
                 <div className="flex items-center gap-4">
                   <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded">
                     <Image
-                      src={item.product.photo_url}
+                      src={item.product.photo_url.startsWith('db:') ? `/api/images/${item.product.id}` : item.product.photo_url}
                       alt={item.product.title}
                       fill
                       className="object-cover"

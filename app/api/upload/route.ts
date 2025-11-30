@@ -1,8 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { sql } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
@@ -40,26 +38,23 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Generate unique filename
-    const timestamp = Date.now();
-    const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const filename = `${timestamp}-${originalName}`;
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-
-    // Ensure upload directory exists
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
-    }
-
-    const filepath = path.join(uploadDir, filename);
-    await writeFile(filepath, buffer);
-
-    // Return the public URL path
-    const publicPath = `/uploads/${filename}`;
+    // Store image in database temporarily and get ID
+    // We'll use a special format: "db:{productId}" for database-stored images
+    // For now, we'll create a temporary product entry or use a different approach
+    // Actually, let's return the image data as base64 for the client to store
+    // Or better: store it in a temporary table or return it to be stored with the product
+    
+    // For simplicity, we'll return the image data as base64
+    // The product creation will store it in the database
+    const base64 = buffer.toString('base64');
+    const dataUrl = `data:${file.type};base64,${base64}`;
 
     return NextResponse.json({
       success: true,
-      url: publicPath,
+      data: base64,
+      mimeType: file.type,
+      // Return a special URL format that indicates it's in the database
+      url: `db:${Date.now()}`,
     });
   } catch (error) {
     console.error('Error uploading file:', error);
@@ -69,4 +64,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

@@ -7,6 +7,7 @@ export async function runMigrations() {
       CREATE TABLE IF NOT EXISTS products (
         id SERIAL PRIMARY KEY,
         photo_url TEXT NOT NULL,
+        photo_data BYTEA,
         link TEXT NOT NULL,
         title TEXT NOT NULL,
         description TEXT,
@@ -14,6 +15,19 @@ export async function runMigrations() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
+    `;
+
+    // Add photo_data column if it doesn't exist (for existing databases)
+    await sql`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'products' AND column_name = 'photo_data'
+        ) THEN
+          ALTER TABLE products ADD COLUMN photo_data BYTEA;
+        END IF;
+      END $$;
     `;
 
     // Create analytics table
@@ -48,4 +62,3 @@ export async function runMigrations() {
     throw error;
   }
 }
-

@@ -13,7 +13,12 @@ export default function ProductForm({ product }: ProductFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(product?.photo_url || null);
+  const [photoData, setPhotoData] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(
+    product?.photo_url?.startsWith('db:') 
+      ? `/api/images/${product.id}` 
+      : product?.photo_url || null
+  );
   const [formData, setFormData] = useState<ProductCreate | ProductUpdate>({
     photo_url: product?.photo_url || '',
     link: product?.link || '',
@@ -29,10 +34,16 @@ export default function ProductForm({ product }: ProductFormProps) {
       const url = product ? `/api/products/${product.id}` : '/api/products';
       const method = product ? 'PATCH' : 'POST';
 
+      // Include photo_data if we have it
+      const payload: any = { ...formData };
+      if (photoData) {
+        payload.photo_data = photoData;
+      }
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -92,10 +103,13 @@ export default function ProductForm({ product }: ProductFormProps) {
       const data = await response.json();
 
       if (data.success) {
+        // Store the base64 data for submission
+        setPhotoData(data.data);
         setFormData((prev) => ({ ...prev, photo_url: data.url }));
       } else {
         alert(data.error || 'Failed to upload image');
         setPreviewUrl(null);
+        setPhotoData(null);
       }
     } catch (error) {
       console.error('Error uploading file:', error);

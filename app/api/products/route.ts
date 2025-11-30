@@ -23,17 +23,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body: ProductCreate = await request.json();
+    const body: ProductCreate & { photo_data?: string; mime_type?: string } = await request.json();
     
     // Validate required fields
-    if (!body.photo_url || !body.link || !body.title) {
+    if ((!body.photo_url && !body.photo_data) || !body.link || !body.title) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: photo_url, link, title' },
+        { success: false, error: 'Missing required fields: photo_url or photo_data, link, title' },
         { status: 400 }
       );
     }
 
-    const product = await createProduct(body);
+    // Convert base64 photo_data to Buffer if provided
+    let photoData: Buffer | undefined;
+    let photoUrl = body.photo_url;
+    
+    if (body.photo_data) {
+      // Remove data URL prefix if present
+      const base64Data = body.photo_data.replace(/^data:image\/\w+;base64,/, '');
+      photoData = Buffer.from(base64Data, 'base64');
+      photoUrl = `db:${Date.now()}`;
+    }
+
+    const product = await createProduct({
+      ...body,
+      photo_url: photoUrl,
+      photo_data: photoData,
+    });
     return NextResponse.json({ success: true, data: product }, { status: 201 });
   } catch (error) {
     console.error('Error creating product:', error);

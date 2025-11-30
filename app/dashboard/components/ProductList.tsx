@@ -125,7 +125,7 @@ export default function ProductList({ products: initialProducts }: ProductListPr
                   <div className="flex items-center gap-4">
                     <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded">
                       <Image
-                        src={product.photo_url}
+                        src={product.photo_url.startsWith('db:') ? `/api/images/${product.id}` : product.photo_url}
                         alt={product.title}
                         fill
                         className="object-cover"
