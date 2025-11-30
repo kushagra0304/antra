@@ -2,33 +2,33 @@ import { sql } from '../db';
 import type { Product, ProductCreate, ProductUpdate } from '../types';
 
 export async function getAllProducts(): Promise<Product[]> {
-  const products = await sql<Product[]>`
+  const products = (await sql`
     SELECT * FROM products
     ORDER BY display_order ASC, created_at DESC
-  `;
+  `) as Product[];
   return products;
 }
 
 export async function getProductById(id: number): Promise<Product | null> {
-  const products = await sql<Product[]>`
+  const products = (await sql`
     SELECT * FROM products WHERE id = ${id}
-  `;
+  `) as Product[];
   return products[0] || null;
 }
 
 export async function createProduct(data: ProductCreate): Promise<Product> {
   // Get the max display_order to place new product at the end
-  const maxOrderResult = await sql<{ max: number | null }[]>`
+  const maxOrderResult = (await sql`
     SELECT MAX(display_order) as max FROM products
-  `;
+  `) as { max: number | null }[];
   const maxOrder = maxOrderResult[0]?.max ?? -1;
   const displayOrder = data.display_order ?? maxOrder + 1;
 
-  const products = await sql<Product[]>`
+  const products = (await sql`
     INSERT INTO products (photo_url, link, title, description, display_order)
     VALUES (${data.photo_url}, ${data.link}, ${data.title}, ${data.description || null}, ${displayOrder})
     RETURNING *
-  `;
+  `) as Product[];
   return products[0];
 }
 
@@ -57,12 +57,12 @@ export async function updateProduct(id: number, data: ProductUpdate): Promise<Pr
 
   updates.push(sql`updated_at = NOW()`);
 
-  const products = await sql<Product[]>`
+  const products = (await sql`
     UPDATE products
     SET ${sql.join(updates, sql`, `)}
     WHERE id = ${id}
     RETURNING *
-  `;
+  `) as Product[];
   return products[0] || null;
 }
 
