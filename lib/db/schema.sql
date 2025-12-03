@@ -11,9 +11,11 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 -- Analytics table
+-- Note: No foreign key constraint on product_id to allow analytics to persist
+-- forever even when products are deleted (orphaned product_id references)
 CREATE TABLE IF NOT EXISTS analytics (
   id SERIAL PRIMARY KEY,
-  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL,
   click_count INTEGER NOT NULL DEFAULT 0,
   view_count INTEGER NOT NULL DEFAULT 0,
   last_clicked_at TIMESTAMP WITH TIME ZONE,
@@ -29,4 +31,9 @@ CREATE INDEX IF NOT EXISTS idx_analytics_product_id ON analytics(product_id);
 
 -- Create unique constraint to ensure one analytics record per product
 CREATE UNIQUE INDEX IF NOT EXISTS idx_analytics_unique_product ON analytics(product_id);
+
+-- Analytics IPs table
+-- Note: No foreign key constraint on product_id to allow analytics_ips to persist
+-- forever even when products are deleted (orphaned product_id references)
+-- This table tracks individual IP actions (views/clicks) for analytics
 

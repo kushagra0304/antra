@@ -98,7 +98,8 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Invalid product ID' }, { status: 400 });
     }
 
-    // Delete the product from database (image data will be automatically deleted via CASCADE)
+    // Delete the product from database
+    // Note: Analytics and analytics_ips records will persist with orphaned product_id references
     await deleteProduct(productId);
 
     return NextResponse.json({ success: true, message: 'Product deleted' });
