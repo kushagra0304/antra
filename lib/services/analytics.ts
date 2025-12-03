@@ -73,26 +73,52 @@ export async function getAllAnalytics(): Promise<AnalyticsWithProduct[]> {
  * Check if IP has already performed an action within the last 24 hours
  */
 async function hasIPActioned(ipAddress: string, productId: number, actionType: 'view' | 'click'): Promise<boolean> {
-  const result = await sql`
-    SELECT COUNT(*) as count
-    FROM analytics_ips
-    WHERE ip_address = ${ipAddress}
-      AND product_id = ${productId}
-      AND action_type = ${actionType}
-      AND created_at > NOW() - INTERVAL '24 hours'
-  ` as { count: number }[];
+  console.log('[IP-CACHE-DEBUG] Checking if IP has actioned:', { ipAddress, productId, actionType });
   
-  return (result[0]?.count ?? 0) > 0;
+  try {
+    const result = await sql`
+      SELECT COUNT(*) as count
+      FROM analytics_ips
+      WHERE ip_address = ${ipAddress}
+        AND product_id = ${productId}
+        AND action_type = ${actionType}
+        AND created_at > NOW() - INTERVAL '24 hours'
+    ` as { count: number }[];
+    
+    const count = result[0]?.count ?? 0;
+    const hasActioned = count > 0;
+    
+    console.log('[IP-CACHE-DEBUG] IP action check result:', { 
+      ipAddress, 
+      productId, 
+      actionType, 
+      count, 
+      hasActioned 
+    });
+    
+    return hasActioned;
+  } catch (error) {
+    console.error('[IP-CACHE-DEBUG] Error checking IP action:', error);
+    throw error;
+  }
 }
 
 /**
  * Record IP action in cache
  */
 async function recordIPAction(ipAddress: string, productId: number, actionType: 'view' | 'click'): Promise<void> {
-  await sql`
-    INSERT INTO analytics_ips (ip_address, product_id, action_type)
-    VALUES (${ipAddress}, ${productId}, ${actionType})
-  `;
+  console.log('[IP-CACHE-DEBUG] Recording IP action:', { ipAddress, productId, actionType });
+  
+  try {
+    await sql`
+      INSERT INTO analytics_ips (ip_address, product_id, action_type)
+      VALUES (${ipAddress}, ${productId}, ${actionType})
+    `;
+    console.log('[IP-CACHE-DEBUG] Successfully recorded IP action:', { ipAddress, productId, actionType });
+  } catch (error) {
+    console.error('[IP-CACHE-DEBUG] Error recording IP action:', error, { ipAddress, productId, actionType });
+    throw error;
+  }
 }
 
 /**
@@ -106,61 +132,89 @@ export async function cleanupOldIPs(): Promise<void> {
 }
 
 export async function incrementViewCount(productId: number, ipAddress: string): Promise<boolean> {
+  console.log('[IP-CACHE-DEBUG] incrementViewCount called:', { productId, ipAddress });
+  
   // Check if this IP has already viewed this product in the last 24 hours
   const hasViewed = await hasIPActioned(ipAddress, productId, 'view');
   
   if (hasViewed) {
+    console.log('[IP-CACHE-DEBUG] View already tracked for IP, skipping increment:', { productId, ipAddress });
     return false; // Already viewed, don't increment
   }
+  
+  console.log('[IP-CACHE-DEBUG] New view detected, recording and incrementing:', { productId, ipAddress });
   
   // Record the IP action
   await recordIPAction(ipAddress, productId, 'view');
   
   // Increment the view count
-  await sql`
-    INSERT INTO analytics (product_id, view_count)
-    VALUES (${productId}, 1)
-    ON CONFLICT (product_id)
-    DO UPDATE SET
-      view_count = analytics.view_count + 1,
-      updated_at = NOW()
-  `;
+  try {
+    await sql`
+      INSERT INTO analytics (product_id, view_count)
+      VALUES (${productId}, 1)
+      ON CONFLICT (product_id)
+      DO UPDATE SET
+        view_count = analytics.view_count + 1,
+        updated_at = NOW()
+    `;
+    console.log('[IP-CACHE-DEBUG] View count incremented successfully:', { productId, ipAddress });
+  } catch (error) {
+    console.error('[IP-CACHE-DEBUG] Error incrementing view count:', error, { productId, ipAddress });
+    throw error;
+  }
   
   // Run cleanup periodically (lazy cleanup - every 100th request or so)
   // For now, we'll run it on every request but it's efficient with the index
   // In production, you might want to run this less frequently
   if (Math.random() < 0.01) { // 1% chance to cleanup
-    cleanupOldIPs().catch(console.error);
+    console.log('[IP-CACHE-DEBUG] Running cleanup of old IPs');
+    cleanupOldIPs().catch((error) => {
+      console.error('[IP-CACHE-DEBUG] Error during cleanup:', error);
+    });
   }
   
   return true; // Successfully incremented
 }
 
 export async function incrementClickCount(productId: number, ipAddress: string): Promise<boolean> {
+  console.log('[IP-CACHE-DEBUG] incrementClickCount called:', { productId, ipAddress });
+  
   // Check if this IP has already clicked this product
   const hasClicked = await hasIPActioned(ipAddress, productId, 'click');
   
   if (hasClicked) {
+    console.log('[IP-CACHE-DEBUG] Click already tracked for IP, skipping increment:', { productId, ipAddress });
     return false; // Already clicked, don't increment
   }
+  
+  console.log('[IP-CACHE-DEBUG] New click detected, recording and incrementing:', { productId, ipAddress });
   
   // Record the IP action
   await recordIPAction(ipAddress, productId, 'click');
   
   // Increment the click count
-  await sql`
-    INSERT INTO analytics (product_id, click_count, last_clicked_at)
-    VALUES (${productId}, 1, NOW())
-    ON CONFLICT (product_id)
-    DO UPDATE SET
-      click_count = analytics.click_count + 1,
-      last_clicked_at = NOW(),
-      updated_at = NOW()
-  `;
+  try {
+    await sql`
+      INSERT INTO analytics (product_id, click_count, last_clicked_at)
+      VALUES (${productId}, 1, NOW())
+      ON CONFLICT (product_id)
+      DO UPDATE SET
+        click_count = analytics.click_count + 1,
+        last_clicked_at = NOW(),
+        updated_at = NOW()
+    `;
+    console.log('[IP-CACHE-DEBUG] Click count incremented successfully:', { productId, ipAddress });
+  } catch (error) {
+    console.error('[IP-CACHE-DEBUG] Error incrementing click count:', error, { productId, ipAddress });
+    throw error;
+  }
   
   // Run cleanup periodically
   if (Math.random() < 0.01) { // 1% chance to cleanup
-    cleanupOldIPs().catch(console.error);
+    console.log('[IP-CACHE-DEBUG] Running cleanup of old IPs');
+    cleanupOldIPs().catch((error) => {
+      console.error('[IP-CACHE-DEBUG] Error during cleanup:', error);
+    });
   }
   
   return true; // Successfully incremented

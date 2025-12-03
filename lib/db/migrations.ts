@@ -23,9 +23,10 @@ export async function runMigrations() {
       await sql`
         ALTER TABLE products ADD COLUMN photo_data BYTEA;
       `;
-    } catch (error: any) {
+    } catch (error) {
       // Column already exists, which is fine
-      if (!error?.message?.includes('already exists') && !error?.message?.includes('duplicate')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (!errorMessage.includes('already exists') && !errorMessage.includes('duplicate')) {
         throw error;
       }
     }
