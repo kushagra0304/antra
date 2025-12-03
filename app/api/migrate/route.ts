@@ -1,8 +1,14 @@
+import { auth } from '@clerk/nextjs/server';
 import { runMigrations } from '@/lib/db/migrations';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     await runMigrations();
     return NextResponse.json({ success: true, message: 'Migrations completed' });
   } catch (error) {

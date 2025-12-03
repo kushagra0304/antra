@@ -69,7 +69,54 @@ export async function getAllAnalytics(): Promise<AnalyticsWithProduct[]> {
   })) as AnalyticsWithProduct[];
 }
 
-export async function incrementViewCount(productId: number): Promise<void> {
+/**
+ * Check if IP has already performed an action within the last 24 hours
+ */
+async function hasIPActioned(ipAddress: string, productId: number, actionType: 'view' | 'click'): Promise<boolean> {
+  const result = await sql`
+    SELECT COUNT(*) as count
+    FROM analytics_ips
+    WHERE ip_address = ${ipAddress}
+      AND product_id = ${productId}
+      AND action_type = ${actionType}
+      AND created_at > NOW() - INTERVAL '24 hours'
+  ` as { count: number }[];
+  
+  return (result[0]?.count ?? 0) > 0;
+}
+
+/**
+ * Record IP action in cache
+ */
+async function recordIPAction(ipAddress: string, productId: number, actionType: 'view' | 'click'): Promise<void> {
+  await sql`
+    INSERT INTO analytics_ips (ip_address, product_id, action_type)
+    VALUES (${ipAddress}, ${productId}, ${actionType})
+  `;
+}
+
+/**
+ * Cleanup IP records older than 24 hours
+ */
+export async function cleanupOldIPs(): Promise<void> {
+  await sql`
+    DELETE FROM analytics_ips
+    WHERE created_at < NOW() - INTERVAL '24 hours'
+  `;
+}
+
+export async function incrementViewCount(productId: number, ipAddress: string): Promise<boolean> {
+  // Check if this IP has already viewed this product in the last 24 hours
+  const hasViewed = await hasIPActioned(ipAddress, productId, 'view');
+  
+  if (hasViewed) {
+    return false; // Already viewed, don't increment
+  }
+  
+  // Record the IP action
+  await recordIPAction(ipAddress, productId, 'view');
+  
+  // Increment the view count
   await sql`
     INSERT INTO analytics (product_id, view_count)
     VALUES (${productId}, 1)
@@ -78,9 +125,29 @@ export async function incrementViewCount(productId: number): Promise<void> {
       view_count = analytics.view_count + 1,
       updated_at = NOW()
   `;
+  
+  // Run cleanup periodically (lazy cleanup - every 100th request or so)
+  // For now, we'll run it on every request but it's efficient with the index
+  // In production, you might want to run this less frequently
+  if (Math.random() < 0.01) { // 1% chance to cleanup
+    cleanupOldIPs().catch(console.error);
+  }
+  
+  return true; // Successfully incremented
 }
 
-export async function incrementClickCount(productId: number): Promise<void> {
+export async function incrementClickCount(productId: number, ipAddress: string): Promise<boolean> {
+  // Check if this IP has already clicked this product
+  const hasClicked = await hasIPActioned(ipAddress, productId, 'click');
+  
+  if (hasClicked) {
+    return false; // Already clicked, don't increment
+  }
+  
+  // Record the IP action
+  await recordIPAction(ipAddress, productId, 'click');
+  
+  // Increment the click count
   await sql`
     INSERT INTO analytics (product_id, click_count, last_clicked_at)
     VALUES (${productId}, 1, NOW())
@@ -90,6 +157,13 @@ export async function incrementClickCount(productId: number): Promise<void> {
       last_clicked_at = NOW(),
       updated_at = NOW()
   `;
+  
+  // Run cleanup periodically
+  if (Math.random() < 0.01) { // 1% chance to cleanup
+    cleanupOldIPs().catch(console.error);
+  }
+  
+  return true; // Successfully incremented
 }
 
 export async function getTotalStats(): Promise<{

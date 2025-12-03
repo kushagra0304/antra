@@ -1,8 +1,14 @@
+import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Example query - test the connection
     const result = await sql`SELECT NOW() as current_time, version() as pg_version`;
     

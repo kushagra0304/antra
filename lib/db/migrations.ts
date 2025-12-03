@@ -56,6 +56,28 @@ export async function runMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_analytics_unique_product ON analytics(product_id)
     `;
 
+    // Create analytics_ips table for IP-based tracking
+    await sql`
+      CREATE TABLE IF NOT EXISTS analytics_ips (
+        id SERIAL PRIMARY KEY,
+        ip_address TEXT NOT NULL,
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        action_type TEXT NOT NULL CHECK (action_type IN ('view', 'click')),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `;
+
+    // Create indexes for efficient lookups
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_analytics_ips_lookup 
+      ON analytics_ips(ip_address, product_id, action_type, created_at)
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_analytics_ips_created_at 
+      ON analytics_ips(created_at)
+    `;
+
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Migration error:', error);
